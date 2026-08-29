@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NurSkin — Upload Photos</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+.upload-page { padding-top: 120px; }
+.drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 60px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--surface);
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.drop-zone-icon { font-size: 40px; margin-bottom: 12px; }
+.drop-zone-text { font-size: 14px; color: var(--text2); font-weight: 300; }
+.drop-zone-hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+.preview-item {
+  position: relative;
+  border-radius: var(--radius2);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.preview-item img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+.preview-label {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: center;
+}
+.upload-status { margin-top: 16px; font-size: 14px; color: var(--green); text-align: center; display: none; }
+.gallery-admin { margin-top: 40px; }
+.gallery-admin h3 { font-size: 15px; font-weight: 500; margin-bottom: 16px; }
+.current-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.gallery-img-wrap {
+  position: relative;
+  border-radius: var(--radius2);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.gallery-img-wrap img { width: 100%; height: 180px; object-fit: cover; display: block; }
+.delete-btn {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: rgba(0,0,0,0.6);
+  color: white; border: none;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.2s;
+}
+.gallery-img-wrap:hover .delete-btn { opacity: 1; }
+.lock-screen {
+  max-width: 380px; margin: 80px auto; text-align: center;
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">NurSkin</a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/admin">Admin</a>
+    </div>
+  </div>
+</nav>
+
+<section class="section upload-page">
+  <div class="container narrow">
+    <div id="login-screen" class="lock-screen">
+      <h2>Upload photos</h2>
+      <p class="text-muted" style="font-size:14px;margin-bottom:24px">Enter PIN to manage gallery images</p>
+      <input type="password" id="upload-pin" class="form-input" placeholder="PIN" />
+      <button onclick="login()" class="btn-primary btn-full">Unlock</button>
+      <p id="login-error" class="error" style="display:none;margin-top:12px">Wrong PIN</p>
+    </div>
+
+    <div id="upload-panel" style="display:none">
+      <p class="section-tag">Gallery</p>
+      <h2>Upload photos</h2>
+
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-icon">📸</div>
+        <p class="drop-zone-text">Drop your photos here</p>
+        <p class="drop-zone-hint">or click to browse · JPG, PNG, WebP</p>
+        <input type="file" id="file-input" accept="image/*" multiple style="display:none" />
+      </div>
+
+      <div id="preview-area" class="preview-grid"></div>
+      <div id="upload-status" class="upload-status"></div>
+
+      <div class="gallery-admin">
+        <h3>Current gallery images</h3>
+        <div id="current-gallery" class="current-images"><p class="loading">Loading…</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>NurSkin — Advanced Skin Specialist</p>
+  </div>
+</footer>
+
+<script>
+let pin = '';
+
+function login() {
+  pin = document.getElementById('upload-pin').value;
+  if (pin === '1337') {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('upload-panel').style.display = 'block';
+    loadGallery();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+// Drag & drop
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFiles(fileInput.files);
+});
+
+function handleFiles(files) {
+  const previewArea = document.getElementById('preview-area');
+  previewArea.innerHTML = '';
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const div = document.createElement('div');
+      div.className = 'preview-item';
+      div.innerHTML = `<img src="${e.target.result}" alt="${file.name}" /><div class="preview-label">${file.name}</div>`;
+      previewArea.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  }
+  uploadFiles(files);
+}
+
+async function uploadFiles(files) {
+  const status = document.getElementById('upload-status');
+  status.style.display = 'block';
+  status.textContent = 'Uploading…';
+  status.style.color = 'var(--text2)';
+
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('images', file);
+  }
+
+  try {
+    const res = await fetch(`/api/upload?pin=${encodeURIComponent(pin)}`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      status.textContent = `✅ ${data.uploaded} photo${data.uploaded > 1 ? 's' : ''} uploaded!`;
+      status.style.color = 'var(--green)';
+      loadGallery();
+    } else {
+      status.textContent = `❌ ${data.detail || 'Upload failed'}`;
+      status.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    console.error('Upload error:', e);
+    status.textContent = `❌ Upload failed — ${e.message || 'check console'}`;
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function loadGallery() {
+  const container = document.getElementById('current-gallery');
+  try {
+    const res = await fetch(`/api/gallery?pin=${encodeURIComponent(pin)}`);
+    const data = await res.json();
+    if (!data.images || data.images.length === 0) {
+      container.innerHTML = '<p class="text-muted" style="font-size:13px">No gallery images yet.</p>';
+      return;
+    }
+    container.innerHTML = data.images.map(img => `
+      <div class="gallery-img-wrap">
+        <img src="/static/images/${img}" alt="${img}" loading="lazy" />
+        <button class="delete-btn" onclick="deleteImage('${img}')">✕</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    container.innerHTML = '<p class="text-muted">Could not load gallery.</p>';
+  }
+}
+
+async function deleteImage(filename) {
+  if (!confirm(`Delete ${filename}?`)) return;
+  const res = await fetch(`/api/upload?pin=${encodeURIComponent(pin)}&filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  if (res.ok) loadGallery();
+}
+</script>
+</body>
+</html>

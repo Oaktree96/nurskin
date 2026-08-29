@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book — NurSkin</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://js.stripe.com/v3/"></script>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">NurSkin</a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/#services">Services</a>
+      <a href="/booking" class="btn-nav">Book Now</a>
+    </div>
+  </div>
+</nav>
+
+<section class="section booking-page">
+  <div class="container narrow">
+    <p class="section-tag">Book</p>
+    <h2>Secure your appointment</h2>
+
+    <div id="terms-banner" class="terms-banner">
+      <strong>No-show policy:</strong> A 25% fee applies if you cancel within 24 hours or miss your appointment. Your card is saved as a guarantee — nothing is charged today.
+    </div>
+
+    <form id="booking-form" class="booking-form">
+      <!-- Step 1: Service -->
+      <div class="form-step">
+        <h3>01 — Choose a service</h3>
+        <div id="service-select" class="service-select">
+          <p class="loading">Loading services…</p>
+        </div>
+      </div>
+
+      <!-- Step 2: Date & Time -->
+      <div class="form-step" id="step-datetime" style="display:none">
+        <h3>02 — Pick a date & time</h3>
+        <input type="date" id="booking-date" class="form-input" min="" />
+        <div id="time-slots" class="time-slots"><p class="text-muted" style="font-size:13px">Select a date to see available times.</p></div>
+      </div>
+
+      <!-- Step 3: Your Details -->
+      <div class="form-step" id="step-details" style="display:none">
+        <h3>03 — Your details</h3>
+        <input type="text" id="client-name" placeholder="Full name" class="form-input" required />
+        <input type="email" id="client-email" placeholder="Email address" class="form-input" required />
+        <input type="tel" id="client-phone" placeholder="Phone (optional)" class="form-input" />
+        <textarea id="client-notes" placeholder="Anything we should know? (optional)" class="form-input" rows="3"></textarea>
+      </div>
+
+      <!-- Step 4: Card Guarantee -->
+      <div class="form-step" id="step-payment" style="display:none">
+        <h3>04 — Card guarantee</h3>
+        <p class="payment-note">Your card is saved as a guarantee against no-shows. <strong>Nothing is charged today.</strong> You pay on the day of your appointment.</p>
+        <p class="payment-note small">If you cancel within 24 hours or don't show up, a <strong>25% fee</strong> will be charged to this card.</p>
+        <div id="card-element" class="card-input"></div>
+        <div id="card-errors" class="card-error" role="alert"></div>
+      </div>
+
+      <!-- Summary -->
+      <div class="form-step" id="step-summary" style="display:none">
+        <h3>05 — Review & confirm</h3>
+        <div id="booking-summary" class="booking-summary"></div>
+        <div id="stripe-disabled-warning" class="terms-banner warning" style="display:none">
+          ⚠ Payments not configured. Booking will be saved without card guarantee.
+        </div>
+        <button type="submit" id="submit-btn" class="btn-primary btn-full" disabled>
+          Confirm booking
+        </button>
+      </div>
+    </form>
+
+    <div id="confirmation" class="confirmation" style="display:none">
+      <div class="conf-icon">✓</div>
+      <h3>Booking confirmed</h3>
+      <p id="conf-msg">Your appointment is secured.</p>
+      <p id="conf-ref" class="conf-ref"></p>
+      <a href="/" class="btn-secondary" style="margin-top:20px;display:inline-flex">Back to home</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>NurSkin — Advanced Skin Specialist · Middlesbrough · Eston</p>
+  </div>
+</footer>
+
+<script>
+let stripe, card, servicesData, selectedService, selectedTime;
+let stripeDisabled = true;
+
+(async function init() {
+  const keyRes = await fetch('/api/stripe-key');
+  const keyData = await keyRes.json();
+  if (keyData.publishable_key) {
+    stripe = Stripe(keyData.publishable_key);
+    const elements = stripe.elements();
+    card = elements.create('card', {
+      style: {
+        base: {
+          color: '#1a1a1a', fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: '14px', fontSmoothing: 'antialiased',
+          '::placeholder': { color: '#9c9490' },
+        },
+        invalid: { color: '#c4847a' },
+      },
+    });
+    card.mount('#card-element');
+    card.on('change', (e) => { document.getElementById('card-errors').textContent = e.error?.message || ''; });
+    stripeDisabled = false;
+  } else {
+    document.getElementById('card-element').innerHTML = '<p class="text-muted" style="font-size:13px">Payment system offline — booking still accepted</p>';
+    document.getElementById('stripe-disabled-warning').style.display = 'block';
+  }
+
+  const res = await fetch('/api/services');
+  servicesData = await res.json();
+  renderServices(servicesData);
+
+  document.getElementById('booking-date').min = new Date().toISOString().split('T')[0];
+  document.getElementById('booking-date').addEventListener('change', loadTimeSlots);
+})();
+
+function renderServices(data) {
+  const container = document.getElementById('service-select');
+  container.innerHTML = '';
+  for (const [category, services] of Object.entries(data)) {
+    const group = document.createElement('div');
+    group.className = 'service-group';
+    group.innerHTML = `<h4 class="cat-label">${category}</h4>`;
+    const items = document.createElement('div');
+    items.className = 'service-options';
+    services.forEach(s => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'service-option';
+      btn.dataset.id = s.id;
+      btn.innerHTML = `<span class="so-name">${s.name}</span><span class="so-price">£${s.price}</span><span class="so-duration">${s.duration_minutes} min</span>`;
+      btn.onclick = () => selectService(s, btn);
+      items.appendChild(btn);
+    });
+    group.appendChild(items);
+    container.appendChild(group);
+  }
+}
+
+function selectService(svc, btn) {
+  document.querySelectorAll('.service-option').forEach(el => el.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedService = svc;
+  document.getElementById('step-datetime').style.display = 'block';
+  document.getElementById('step-datetime').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function loadTimeSlots() {
+  const date = document.getElementById('booking-date').value;
+  if (!date) return;
+
+  const res = await fetch(`/api/availability?date=${date}`);
+  const data = await res.json();
+  const slots = document.getElementById('time-slots');
+
+  if (data.available.length === 0) {
+    slots.innerHTML = '<p class="text-muted" style="font-size:13px">No available slots on this date. Try another day.</p>';
+    return;
+  }
+
+  slots.innerHTML = '<p class="slot-label">Available times</p>' +
+    data.available.map(t => `<button type="button" class="time-slot" data-time="${t}">${t}</button>`).join('');
+
+  document.querySelectorAll('.time-slot').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.time-slot').forEach(el => el.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedTime = btn.dataset.time;
+      document.getElementById('step-details').style.display = 'block';
+      document.getElementById('step-payment').style.display = 'block';
+      document.getElementById('step-summary').style.display = 'block';
+      updateSummary();
+      document.getElementById('step-details').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  });
+}
+
+function updateSummary() {
+  const name = document.getElementById('client-name').value || 'Your name';
+  const email = document.getElementById('client-email').value || 'your@email.com';
+  const date = document.getElementById('booking-date').value;
+
+  document.getElementById('booking-summary').innerHTML = `
+    <div class="summary-row"><span>Service</span><span>${selectedService.name}</span></div>
+    <div class="summary-row"><span>Price</span><span>£${selectedService.price}</span></div>
+    <div class="summary-row"><span>Date</span><span>${date}</span></div>
+    <div class="summary-row"><span>Time</span><span>${selectedTime}</span></div>
+    <div class="summary-row"><span>Name</span><span>${name}</span></div>
+    <div class="summary-row"><span>Email</span><span>${email}</span></div>
+    <div class="summary-row warn"><span>No-show fee (25%)</span><span>£${(selectedService.price * 0.25).toFixed(2)}</span></div>
+  `;
+
+  const nameVal = document.getElementById('client-name').value.trim();
+  const emailVal = document.getElementById('client-email').value.trim();
+  const ok = nameVal && emailVal && date && selectedTime;
+  document.getElementById('submit-btn').disabled = !ok;
+}
+
+['client-name', 'client-email'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateSummary);
+});
+
+document.getElementById('booking-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Confirming…';
+
+  const name = document.getElementById('client-name').value.trim();
+  const email = document.getElementById('client-email').value.trim();
+  const phone = document.getElementById('client-phone').value.trim();
+  const notes = document.getElementById('client-notes').value.trim();
+  const date = document.getElementById('booking-date').value;
+
+  let stripePaymentMethodId = null;
+
+  if (!stripeDisabled && stripe) {
+    const { error, paymentMethod } = await stripe.createPaymentMethod({
+      type: 'card',
+      card: card,
+      billing_details: { name, email },
+    });
+
+    if (error) {
+      document.getElementById('card-errors').textContent = error.message;
+      btn.disabled = false;
+      btn.textContent = 'Confirm booking';
+      return;
+    }
+    stripePaymentMethodId = paymentMethod.id;
+  }
+
+  try {
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_name: name,
+        client_email: email,
+        client_phone: phone,
+        service_id: selectedService.id,
+        booking_date: date,
+        booking_time: selectedTime,
+        notes,
+        stripe_payment_method_id: stripePaymentMethodId || 'manual',
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Booking failed');
+    }
+
+    document.getElementById('booking-form').style.display = 'none';
+    document.getElementById('confirmation').style.display = 'block';
+    document.getElementById('conf-msg').textContent = data.message;
+    document.getElementById('conf-ref').textContent = `Reference: ${data.reference}`;
+  } catch (e) {
+    document.getElementById('card-errors').textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = 'Confirm booking';
+  }
+});
+</script>
+</body>
+</html>

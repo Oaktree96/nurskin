@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NurSkin — Advanced Skin Specialist</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo">NurSkin</a>
+    <div class="nav-links">
+      <a href="#services">Services</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+      <a href="/booking" class="btn-nav">Book Now</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-bg" style="background-image:url('https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=1400&q=80')"></div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <p class="hero-tag">NMC Registered Nurse · Middlesbrough</p>
+    <h1>Advanced<br><span class="accent">Skin</span> Specialist</h1>
+    <p class="hero-sub">Medical-grade skincare, injectables and facial treatments — tailored to your skin, not a menu. Honest clinical advice, premium results.</p>
+    <div class="hero-actions">
+      <a href="/booking" class="btn-primary">Book a treatment</a>
+      <a href="#services" class="btn-secondary">View services</a>
+    </div>
+  </div>
+</section>
+
+<section id="services" class="section">
+  <div class="container">
+    <p class="section-tag">Treatments</p>
+    <h2>Our services</h2>
+    <div id="services-container" class="services-grid"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+<section id="gallery" class="section section-dark">
+  <div class="container">
+    <p class="section-tag">Results</p>
+    <h2>Treatment gallery</h2>
+    <p class="gallery-sub">Real results from real clients. Follow <a href="https://www.instagram.com/nurskin_/" target="_blank" style="color:var(--accent)">@nurskin_</a> on Instagram for more.</p>
+    <div id="gallery-grid" class="gallery-grid">
+      <div class="gallery-item loading-item"><p class="loading">Loading gallery…</p></div>
+    </div>
+    <p class="gallery-cta">Want your results here? <a href="/booking">Book a treatment</a> today.</p>
+  </div>
+</section>
+
+<section id="about" class="section">
+  <div class="container">
+    <div class="about-grid">
+      <div>
+        <p class="section-tag">Practice</p>
+        <h2>About NurSkin</h2>
+        <p class="about-text">Advanced skin treatments delivered by an NMC Registered Nurse with a passion for results-driven skincare. Every treatment is tailored to your skin type and goals — no one-size-fits-all, just honest clinical advice and premium results.</p>
+        <p class="about-text">Specialising in medical-grade facials, chemical peels, microneedling, anti-wrinkle injections, and dermal fillers. Based in Middlesbrough, Eston.</p>
+        <a href="https://www.instagram.com/nurskin_/" target="_blank" class="btn-secondary" style="margin-top:8px">Follow on Instagram</a>
+      </div>
+      <div class="about-highlights">
+        <div class="highlight">
+          <span class="hl-num">NMC Registered</span>
+          <span class="hl-label">Registered Nurse with advanced training in aesthetic medicine</span>
+        </div>
+        <div class="highlight">
+          <span class="hl-num">Medical-Grade</span>
+          <span class="hl-label">Premium clinical products and professional-grade equipment</span>
+        </div>
+        <div class="highlight">
+          <span class="hl-num">25% No-Show Fee</span>
+          <span class="hl-label">Card saved as guarantee — nothing charged on the day</span>
+        </div>
+        <div class="highlight">
+          <span class="hl-num">📍 Eston, Middlesbrough</span>
+          <span class="hl-label">Conveniently located with free parking</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="contact" class="section section-dark">
+  <div class="container text-center">
+    <p class="section-tag">Contact</p>
+    <h2>Get in touch</h2>
+    <p class="contact-text">Book online or send us a message — we'll get back to you within 24 hours.</p>
+    <div class="contact-links">
+      <a href="https://www.instagram.com/nurskin_/" target="_blank" class="contact-item">Instagram</a>
+      <a href="/booking" class="contact-item">Book online</a>
+    </div>
+    <p class="location">Middlesbrough · Eston</p>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>NurSkin — Advanced Skin Specialist</p>
+    <p class="footer-small">NMC Registered Nurse · Middlesbrough · Eston</p>
+  </div>
+</footer>
+
+<script>
+async function loadServices() {
+  try {
+    const res = await fetch('/api/services');
+    const data = await res.json();
+    const container = document.getElementById('services-container');
+    container.innerHTML = '';
+    for (const [category, services] of Object.entries(data)) {
+      const categoryDiv = document.createElement('div');
+      categoryDiv.className = 'category-group';
+      const catHeader = document.createElement('div');
+      catHeader.className = 'category-header';
+      catHeader.innerHTML = `<h3>${category}</h3>`;
+      categoryDiv.appendChild(catHeader);
+      const cards = document.createElement('div');
+      cards.className = 'service-cards';
+      services.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'service-card';
+        card.innerHTML = `<div class="card-body"><h4>${s.name}</h4><p>${s.description}</p><div class="card-meta"><span class="price">£${s.price}</span><span class="duration">${s.duration_minutes} min</span></div></div>`;
+        cards.appendChild(card);
+      });
+      categoryDiv.appendChild(cards);
+      container.appendChild(categoryDiv);
+    }
+  } catch (e) {
+    document.getElementById('services-container').innerHTML = '<p class="error">Could not load services.</p>';
+  }
+}
+loadServices();
+
+async function loadGallery() {
+  try {
+    const res = await fetch('/api/gallery?pin=view');
+    const data = await res.json();
+    const grid = document.getElementById('gallery-grid');
+    if (!data.images || data.images.length === 0) {
+      grid.innerHTML = `
+        <div class="gallery-item"><img src="https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?w=600&q=80" alt="Facial" loading="lazy" /></div>
+        <div class="gallery-item"><img src="https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?w=600&q=80" alt="Consultation" loading="lazy" /></div>
+        <div class="gallery-item"><img src="https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=600&q=80" alt="Skincare" loading="lazy" /></div>
+      `;
+      return;
+    }
+    grid.innerHTML = data.images.slice(0, 6).map(img => `
+      <div class="gallery-item"><img src="/static/images/${img}" alt="Treatment result" loading="lazy" /></div>
+    `).join('');
+  } catch (e) {}
+}
+loadGallery();
+</script>
+</body>
+</html>

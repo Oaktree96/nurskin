@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NurSkin — Admin</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="admin-body">
+<section class="section">
+  <div class="container wide">
+    <div id="login-screen" class="admin-login">
+      <h2>NurSkin</h2>
+      <p class="text-muted" style="font-size:14px;margin-bottom:24px">Enter PIN to manage bookings</p>
+      <input type="password" id="admin-pin" class="form-input" placeholder="PIN" />
+      <button onclick="login()" class="btn-primary btn-full">Unlock</button>
+      <p id="login-error" class="error" style="display:none;margin-top:12px">Wrong PIN</p>
+    </div>
+
+    <div id="admin-panel" style="display:none">
+      <div class="admin-header">
+        <h2>NurSkin <span style="color:var(--text3)">admin</span></h2>
+        <button onclick="document.getElementById('login-screen').style.display='block';document.getElementById('admin-panel').style.display='none'" class="btn-secondary sm">Lock</button>
+      </div>
+
+      <div id="stats-grid" class="stats-grid"></div>
+      <div id="fee-summary" class="fee-summary"></div>
+
+      <h3 style="font-size:15px;font-weight:500;margin-bottom:16px">All bookings</h3>
+      <div id="bookings-table" class="table-wrap"><p class="loading">Loading…</p></div>
+
+      <div class="admin-help">
+        <h4>How it works</h4>
+        <p><strong>No-show fee:</strong> When a client books, their card is saved as a guarantee. If they cancel within 24h or don't show, click "No-show" to bill them automatically via Stripe.</p>
+        <p><strong>Photos:</strong> <a href="/upload" style="color:var(--accent)">Upload treatment photos here</a> to show on the homepage gallery.</p>
+        <p><strong>Statuses:</strong> <code>confirmed</code> <span style="color:var(--text3)">→</span> <code>completed</code> <span style="color:var(--text3)">|</span> <code>no_show</code> (fee charged) <span style="color:var(--text3)">|</span> <code>cancelled</code></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+let pin = '';
+
+function login() {
+  pin = document.getElementById('admin-pin').value;
+  loadDashboard();
+}
+
+async function loadDashboard() {
+  try {
+    const [statsRes, bookingsRes] = await Promise.all([
+      fetch(`/api/stats?pin=${encodeURIComponent(pin)}`),
+      fetch(`/api/bookings?pin=${encodeURIComponent(pin)}`),
+    ]);
+
+    if (statsRes.status === 401 || bookingsRes.status === 401) {
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'block';
+
+    const stats = await statsRes.json();
+    const bookings = await bookingsRes.json();
+
+    renderStats(stats);
+    renderFeeSummary(bookings);
+    renderBookings(bookings);
+  } catch (e) {
+    document.getElementById('login-error').textContent = 'Connection error';
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><span class="stat-num">${s.total_bookings}</span><span class="stat-label">Total</span></div>
+    <div class="stat-card"><span class="stat-num">${s.today_bookings}</span><span class="stat-label">Today</span></div>
+    <div class="stat-card"><span class="stat-num">${s.confirmed}</span><span class="stat-label">Upcoming</span></div>
+    <div class="stat-card"><span class="stat-num">${s.no_shows}</span><span class="stat-label">No-shows</span></div>
+    <div class="stat-card"><span class="stat-num">${s.completed}</span><span class="stat-label">Completed</span></div>
+    <div class="stat-card"><span class="stat-num">${s.cancelled}</span><span class="stat-label">Cancelled</span></div>
+  `;
+}
+
+function renderFeeSummary(bookings) {
+  const unpaidNoShows = bookings.filter(b => b.status === 'no_show' && !b.no_show_fee_paid);
+  const totalOwed = unpaidNoShows.reduce((sum, b) => sum + (b.cancellation_fee_amount || 0), 0);
+  const totalCollected = bookings.filter(b => b.no_show_fee_paid).reduce((sum, b) => sum + (b.cancellation_fee_amount || 0), 0);
+
+  if (unpaidNoShows.length === 0 && totalCollected === 0) {
+    document.getElementById('fee-summary').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('fee-summary').innerHTML = `
+    <div class="fee-cards">
+      <div class="fee-card ${unpaidNoShows.length > 0 ? 'warn' : ''}">
+        <span class="fee-amount">£${totalOwed.toFixed(2)}</span>
+        <span class="fee-label">Uncollected fees (${unpaidNoShows.length})</span>
+      </div>
+      <div class="fee-card fee-paid">
+        <span class="fee-amount">£${totalCollected.toFixed(2)}</span>
+        <span class="fee-label">Fees collected</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderBookings(bookings) {
+  const container = document.getElementById('bookings-table');
+  if (bookings.length === 0) {
+    container.innerHTML = '<p class="text-muted" style="font-size:14px">No bookings yet.</p>';
+    return;
+  }
+
+  const statusBadge = (s) => {
+    const colors = {
+      pending_payment: 'badge-yellow',
+      confirmed: 'badge-blue',
+      completed: 'badge-green',
+      cancelled: 'badge-gray',
+      no_show: 'badge-red',
+    };
+    return `<span class="badge ${colors[s] || 'badge-gray'}">${s.replace('_', ' ')}</span>`;
+  };
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <thead><tr>
+        <th>Date</th><th>Time</th><th>Client</th><th>Service</th><th>Price</th><th>Status</th><th>Fee</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${bookings.map(b => `
+          <tr>
+            <td style="font-size:12px">${b.booking_date}</td>
+            <td>${b.booking_time}</td>
+            <td><strong style="font-weight:500">${b.client_name}</strong><br><span class="text-muted small">${b.client_email || ''}</span></td>
+            <td>${b.service_name}</td>
+            <td>£${b.service_price}</td>
+            <td>${statusBadge(b.status)}</td>
+            <td style="font-size:12px">${b.cancellation_fee_charged ? `£${b.cancellation_fee_amount?.toFixed(2) || '0.00'}${b.no_show_fee_paid ? ' ✓' : ' ✗'}` : '—'}</td>
+            <td>
+              ${b.status === 'confirmed' ? `
+                <button onclick="markStatus(${b.id},'completed')" class="btn-sm btn-ok">Done</button>
+                <button onclick="markNoShow(${b.id})" class="btn-sm btn-danger">No-show</button>
+              ` : ''}
+              ${b.status === 'no_show' && !b.no_show_fee_paid ? '<span class="text-muted small">Unpaid</span>' : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function markStatus(id, status) {
+  await fetch(`/api/bookings/${id}/status?pin=${encodeURIComponent(pin)}&status=${status}`, { method: 'PUT' });
+  loadDashboard();
+}
+
+async function markNoShow(id) {
+  if (!confirm('Mark as no-show and charge the 25% fee?')) return;
+  await fetch(`/api/bookings/${id}/no-show?pin=${encodeURIComponent(pin)}`, { method: 'POST' });
+  loadDashboard();
+}
+</script>
+</body>
+</html>
