@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from database import init_db, SessionLocal, Service, Booking
+from database import init_db, SessionLocal, Service, Booking, BlockedSlot
 
 # ── Config ────────────────────────────────────
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -98,19 +98,88 @@ def get_terms():
 def get_availability(date: str):
     """Return available time slots for a given date (YYYY-MM-DD)."""
     db = SessionLocal()
+
+    # Already booked
     existing = db.query(Booking).filter(
         Booking.booking_date == date,
         Booking.status.in_(["pending_payment", "confirmed"]),
     ).all()
-    db.close()
+
+    # Blocked by practitioner — full day or specific times
+    blocked = db.query(BlockedSlot).filter(
+        BlockedSlot.date == date,
+    ).all()
 
     booked_times = {b.booking_time for b in existing}
+    blocked_times = set()
+    for b in blocked:
+        if b.time is None:
+            blocked_times.update(["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"])
+        else:
+            blocked_times.add(b.time)
+
+    db.close()
+
     all_slots = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]
-    available = [s for s in all_slots if s not in booked_times]
+    available = [s for s in all_slots if s not in booked_times and s not in blocked_times]
     return {"date": date, "available": available}
 
 
-@app.post("/api/bookings")
+# ── Routes — Blocked Slots (Admin) ──────────
+class BlockedSlotCreate(BaseModel):
+    date: str       # YYYY-MM-DD
+    time: str | None = None  # HH:MM or None = full day
+
+
+@app.get("/api/blocked-slots")
+def get_blocked(pin: str):
+    if pin != ADMIN_PIN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = SessionLocal()
+    slots = db.query(BlockedSlot).order_by(BlockedSlot.date.desc(), BlockedSlot.time.asc()).all()
+    db.close()
+    return [
+        {"id": s.id, "date": s.date, "time": s.time}
+        for s in slots
+    ]
+
+
+@app.post("/api/blocked-slots")
+def block_slot(data: BlockedSlotCreate, pin: str):
+    if pin != ADMIN_PIN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = SessionLocal()
+    existing = db.query(BlockedSlot).filter(
+        BlockedSlot.date == data.date,
+        BlockedSlot.time == data.time,
+    ).first()
+    if existing:
+        db.close()
+        return {"message": "Already blocked", "id": existing.id}
+    slot = BlockedSlot(date=data.date, time=data.time)
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    db.close()
+    return {"message": "Blocked", "id": slot.id, "date": slot.date, "time": slot.time}
+
+
+@app.delete("/api/blocked-slots/{slot_id}")
+def unblock_slot(slot_id: int, pin: str):
+    if pin != ADMIN_PIN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = SessionLocal()
+    slot = db.query(BlockedSlot).filter(BlockedSlot.id == slot_id).first()
+    if not slot:
+        db.close()
+        raise HTTPException(status_code=404, detail="Blocked slot not found")
+    db.delete(slot)
+    db.commit()
+    db.close()
+    return {"message": "Unblocked", "id": slot_id}
+
+
+# ── Routes — Booking ─────────────────────────
 def create_booking(booking: BookingCreate):
     """Create booking & save card as guarantee for 25% no-show fee."""
     db = SessionLocal()

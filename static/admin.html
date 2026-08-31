@@ -28,6 +28,29 @@
       <div id="stats-grid" class="stats-grid"></div>
       <div id="fee-summary" class="fee-summary"></div>
 
+      <h3 style="font-size:15px;font-weight:500;margin-bottom:16px;margin-top:32px">Availability</h3>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:20px;margin-bottom:28px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <div>
+            <label style="font-size:11px;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Block a day</label>
+            <input type="date" id="block-date" class="form-input" style="width:180px;padding:10px 14px;margin:0" />
+          </div>
+          <button onclick="blockDay()" class="btn-sm btn-ok" style="padding:10px 20px">Block day</button>
+          <div>
+            <label style="font-size:11px;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Block a time</label>
+            <div style="display:flex;gap:6px">
+              <input type="date" id="block-time-date" class="form-input" style="width:160px;padding:10px 14px;margin:0" />
+              <select id="block-time-slot" class="form-input" style="width:100px;padding:10px 14px;margin:0">
+                <option>09:00</option><option>10:00</option><option>11:00</option><option>12:00</option>
+                <option>13:00</option><option>14:00</option><option>15:00</option><option>16:00</option><option>17:00</option>
+              </select>
+            </div>
+          </div>
+          <button onclick="blockTime()" class="btn-sm btn-danger" style="padding:10px 20px">Block time</button>
+        </div>
+        <div id="blocked-list" style="margin-top:16px;font-size:13px;color:var(--text2)"><span class="loading">Loading blocked slots…</span></div>
+      </div>
+
       <h3 style="font-size:15px;font-weight:500;margin-bottom:16px">All bookings</h3>
       <div id="bookings-table" class="table-wrap"><p class="loading">Loading…</p></div>
 
@@ -70,10 +93,65 @@ async function loadDashboard() {
     renderStats(stats);
     renderFeeSummary(bookings);
     renderBookings(bookings);
+    loadBlocked();
+    // Set min dates on block inputs
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('block-date').min = today;
+    document.getElementById('block-time-date').min = today;
   } catch (e) {
     document.getElementById('login-error').textContent = 'Connection error';
     document.getElementById('login-error').style.display = 'block';
   }
+}
+
+// ── Availability (Blocked Slots) ─────────────
+async function loadBlocked() {
+  try {
+    const res = await fetch(`/api/blocked-slots?pin=${encodeURIComponent(pin)}`);
+    if (!res.ok) return;
+    const slots = await res.json();
+    const container = document.getElementById('blocked-list');
+    if (slots.length === 0) {
+      container.innerHTML = '<span style="opacity:0.5">No blocked dates or times.</span>';
+      return;
+    }
+    container.innerHTML = slots.map(s => {
+      const label = s.time ? `${s.date} at ${s.time}` : `${s.date} (all day)`;
+      return `<span style="display:inline-block;background:var(--accent-light);color:var(--text);padding:4px 12px;border-radius:999px;margin:0 6px 6px 0;font-size:12px">
+        ${label} <a href="#" onclick="unblock(${s.id});return false" style="color:var(--accent2);text-decoration:none;margin-left:4px">✕</a>
+      </span>`;
+    }).join('');
+  } catch (e) {}
+}
+
+async function blockDay() {
+  const date = document.getElementById('block-date').value;
+  if (!date) return;
+  await fetch(`/api/blocked-slots?pin=${encodeURIComponent(pin)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date}),
+  });
+  document.getElementById('block-date').value = '';
+  loadBlocked();
+}
+
+async function blockTime() {
+  const date = document.getElementById('block-time-date').value;
+  const time = document.getElementById('block-time-slot').value;
+  if (!date) return;
+  await fetch(`/api/blocked-slots?pin=${encodeURIComponent(pin)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date, time}),
+  });
+  document.getElementById('block-time-date').value = '';
+  loadBlocked();
+}
+
+async function unblock(id) {
+  await fetch(`/api/blocked-slots/${id}?pin=${encodeURIComponent(pin)}`, { method: 'DELETE' });
+  loadBlocked();
 }
 
 function renderStats(s) {

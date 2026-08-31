@@ -51,6 +51,16 @@ class Booking(Base):
     no_show_fee_paid = Column(Boolean, default=False)
 
 
+class BlockedSlot(Base):
+    """Dates/times the practitioner is unavailable (blocked)."""
+    __tablename__ = "blocked_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String(20), nullable=False, index=True)  # YYYY-MM-DD
+    time = Column(String(10), nullable=True)  # HH:MM or null = full day blocked
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _seed_services()
