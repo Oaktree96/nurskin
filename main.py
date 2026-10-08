@@ -18,8 +18,7 @@ from database import init_db, SessionLocal, Service, Booking, BlockedSlot
 # ── Config ────────────────────────────────────
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
-NO_SHOW_FEE_PERCENT = 0.25  # 25%
-CANCEL_HOURS = 24
+NO_SHOW_FEE_PERCENT = 0.25  # 25% cancellation / no-show fee
 ADMIN_PIN = "1337"
 
 # ── App ───────────────────────────────────────
@@ -89,7 +88,6 @@ def get_stripe_key():
 def get_terms():
     return {
         "no_show_fee_percent": int(NO_SHOW_FEE_PERCENT * 100),
-        "cancel_hours": CANCEL_HOURS,
     }
 
 
@@ -248,7 +246,7 @@ def create_booking(booking: BookingCreate):
     db.close()
 
     return {
-        "message": "Booking secured! Your card is saved as a guarantee. The 25% no-show fee applies if you cancel within 24h or miss your appointment.",
+        "message": "Booking secured! Your card is saved as a guarantee — nothing is charged today. A 25% cancellation fee applies if you cancel.",
         "id": new_booking.id,
         "reference": ref,
     }
@@ -256,7 +254,7 @@ def create_booking(booking: BookingCreate):
 
 @app.post("/api/bookings/{booking_id}/cancel")
 def cancel_booking(booking_id: int):
-    """Cancel booking. Charge 25% if within 24h of appointment."""
+    """Cancel booking. Policy: 0% booking fee; 25% of the service charged on any cancellation."""
     db = SessionLocal()
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
@@ -267,14 +265,10 @@ def cancel_booking(booking_id: int):
         db.close()
         raise HTTPException(status_code=400, detail=f"Booking already {booking.status}")
 
-    booking_dt = datetime.strptime(f"{booking.booking_date} {booking.booking_time}", "%Y-%m-%d %H:%M")
-    now = datetime.now()
-    hours_until = (booking_dt - now).total_seconds() / 3600
-
     fee_charged = False
     fee_amount = None
 
-    if hours_until <= CANCEL_HOURS and booking.stripe_payment_method_id and booking.stripe_customer_id:
+    if booking.stripe_payment_method_id and booking.stripe_customer_id:
         fee_amount = round(booking.service_price * NO_SHOW_FEE_PERCENT, 2)
         amount_cents = int(round(fee_amount * 100))
 
@@ -289,9 +283,9 @@ def cancel_booking(booking_id: int):
                 metadata={
                     "booking_id": str(booking.id),
                     "reference": booking.reference or "",
-                    "reason": "late_cancellation",
+                    "reason": "cancellation",
                 },
-                description=f"{booking.service_name} — late cancellation fee (25%)",
+                description=f"{booking.service_name} — cancellation fee (25%)",
             )
             fee_charged = True
             booking.cancellation_fee_charged = True
@@ -303,13 +297,14 @@ def cancel_booking(booking_id: int):
     booking.status = "cancelled"
     db.commit()
     booking_id_val = booking.id
+    had_card = bool(booking.stripe_payment_method_id)
     db.close()
 
     msg = "Booking cancelled."
     if fee_charged:
         msg = f"Booking cancelled. A 25% fee of £{fee_amount:.2f} was charged to your card."
-    elif hours_until <= CANCEL_HOURS:
-        msg = "Booking cancelled. The 25% no-show fee could not be charged — no card on file."
+    elif had_card:
+        msg = "Booking cancelled. The 25% cancellation fee could not be charged — please contact us."
 
     return {"message": msg, "id": booking_id_val, "status": "cancelled", "fee_charged": fee_charged, "fee_amount": fee_amount}
 
@@ -438,7 +433,6 @@ def get_stats(pin: str):
         "cancellation_fees": round(total_fees, 2),
         "collected_fees": round(collected_fees, 2),
         "cancel_fee_percent": int(NO_SHOW_FEE_PERCENT * 100),
-        "cancel_hours": CANCEL_HOURS,
     }
 
 
