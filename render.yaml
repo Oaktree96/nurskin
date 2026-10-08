@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: nurskin
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////var/data/nurskin.db
+      - key: IMAGES_DIR
+        value: /var/data/images
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+    disk:
+      name: nurskin-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,10 +1,12 @@
 """NurSkin Booking System — Database Models"""
+import os
 import uuid
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
-DATABASE_URL = "sqlite:///nurskin.db"
+# Render: DATABASE_URL points at the persistent disk (sqlite:////var/data/nurskin.db)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///nurskin.db")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

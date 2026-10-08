@@ -1,5 +1,6 @@
 """NurSkin — FastAPI Booking System with 25% No-Show Fee"""
 import os
+import shutil
 import uuid
 import stripe
 from datetime import datetime, timedelta
@@ -30,6 +31,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+    _seed_images()
+
+
+def _seed_images():
+    """Fresh Render disk? Copy the git-committed gallery photos across so the
+    gallery isn't empty before the owner uploads her own."""
+    default_dir = os.path.join(os.path.dirname(__file__), "static", "images")
+    if os.path.abspath(IMAGES_DIR) == os.path.abspath(default_dir):
+        return
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    if os.listdir(IMAGES_DIR):
+        return  # Already seeded, or owner has uploaded photos
+    for name in os.listdir(default_dir):
+        src = os.path.join(default_dir, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(IMAGES_DIR, name))
 
 
 # ── Schemas ───────────────────────────────────
@@ -476,7 +493,7 @@ def update_booking_status(booking_id: int, pin: str, status: str):
 
 
 # ── Routes — Gallery Upload ───────────────────
-IMAGES_DIR = os.path.join(os.path.dirname(__file__), "static", "images")
+IMAGES_DIR = os.environ.get("IMAGES_DIR") or os.path.join(os.path.dirname(__file__), "static", "images")
 
 @app.get("/upload")
 def upload_page():
