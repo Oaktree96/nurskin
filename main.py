@@ -220,6 +220,7 @@ def create_booking(booking: BookingCreate):
                 _ = stripe.SetupIntent.create(
                     customer=stripe_customer.id,
                     payment_method=booking.stripe_payment_method_id,
+                    automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
                     confirm=True,
                     usage="off_session",
                 )
@@ -234,7 +235,7 @@ def create_booking(booking: BookingCreate):
                 friendly = getattr(e, "user_message", None) or str(e)
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Couldn't verify your card — {friendly}",
+                    detail=f"We couldn't secure your booking — {friendly}",
                 )
 
     # Generate reference
@@ -293,6 +294,7 @@ def cancel_booking(booking_id: int):
                 currency="gbp",
                 customer=booking.stripe_customer_id,
                 payment_method=booking.stripe_payment_method_id,
+                automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
                 off_session=True,
                 confirm=True,
                 metadata={
@@ -352,6 +354,7 @@ def mark_no_show(booking_id: int, request: Request):
                 currency="gbp",
                 customer=booking.stripe_customer_id,
                 payment_method=booking.stripe_payment_method_id,
+                automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
                 off_session=True,
                 confirm=True,
                 metadata={
