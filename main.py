@@ -178,6 +178,7 @@ def unblock_slot(slot_id: int, pin: str):
 
 
 # ── Routes — Booking ─────────────────────────
+@app.post("/api/bookings")
 def create_booking(booking: BookingCreate):
     """Create booking & save card as guarantee for 25% no-show fee."""
     db = SessionLocal()
@@ -211,16 +212,30 @@ def create_booking(booking: BookingCreate):
                 name=booking.client_name,
                 metadata={"source": "nurskin"},
             )
-            stripe.PaymentMethod.attach(
-                booking.stripe_payment_method_id,
-                customer=stripe_customer.id,
-            )
-            _ = stripe.SetupIntent.create(
-                customer=stripe_customer.id,
-                payment_method=booking.stripe_payment_method_id,
-                confirm=True,
-                usage="off_session",
-            )
+            try:
+                stripe.PaymentMethod.attach(
+                    booking.stripe_payment_method_id,
+                    customer=stripe_customer.id,
+                )
+                _ = stripe.SetupIntent.create(
+                    customer=stripe_customer.id,
+                    payment_method=booking.stripe_payment_method_id,
+                    confirm=True,
+                    usage="off_session",
+                )
+            except stripe.StripeError as e:
+                # Card failed validation — clean up the orphaned customer and
+                # return a friendly 400 instead of a 500 for the client.
+                try:
+                    stripe.Customer.delete(stripe_customer.id)
+                except stripe.StripeError:
+                    pass
+                db.close()
+                friendly = getattr(e, "user_message", None) or str(e)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Couldn't verify your card — {friendly}",
+                )
 
     # Generate reference
     ref = _generate_ref()
